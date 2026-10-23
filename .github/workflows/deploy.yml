@@ -1,0 +1,45 @@
+name: Deploy to Server
+
+# Триггер: запускать при пуше в ветку main (или master)
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SERVER_PORT || 22 }}
+          script_stop: true
+          script: |
+            cd /app
+
+            git fetch origin
+            git reset --hard origin/main
+
+            echo "Собирается docker"
+            docker stop hackback_api || true
+            docker rm hackback_api || true
+            docker build --no-cache -t hackback-api .
+            docker run -d \
+              --name hackback_api \
+              --restart always \
+              -e ASPNETCORE_ENVIRONMENT=Development \
+              -p 5170:5170 \
+              hackback-api
+
+            echo "Чистим хлам"
+            docker image prune -f
+
+            echo "Здеплоин"
