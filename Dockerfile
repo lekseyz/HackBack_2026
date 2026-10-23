@@ -1,6 +1,9 @@
-# 1. Сборка на .NET 10
-FROM mcr.microsoft.com/dotnet/sdk:10.0-preview AS build
+# 1. Сборка на .NET 10 (GA)
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
+
+# Конфиг NuGet из репо — детерминированные источники пакетов
+COPY NuGet.Config .
 
 # Копируем файлы проектов для кэширования nuget-пакетов
 COPY ["src/HackBack.Domain/HackBack.Domain.csproj", "src/HackBack.Domain/"]
@@ -10,22 +13,24 @@ COPY ["src/HackBack.Api/HackBack.Api.csproj", "src/HackBack.Api/"]
 # Восстанавливаем зависимости
 RUN dotnet restore "src/HackBack.Api/HackBack.Api.csproj"
 
-# Копируем исходный код
+# Копируем исходный код (bin/obj/.git исключены .dockerignore)
 COPY src/ src/
 
 # Собираем и публикуем
-WORKDIR "/src/src/HackBack.Api"
-RUN dotnet publish "HackBack.Api.csproj" -c Release -o /app/publish /p:UseAppHost=false
+RUN dotnet publish "src/HackBack.Api/HackBack.Api.csproj" -c Release -o /app/publish /p:UseAppHost=false
 
 # 2. Финальный образ .NET 10
-FROM mcr.microsoft.com/dotnet/aspnet:10.0-preview AS final
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
 WORKDIR /app
 
 COPY --from=build /app/publish .
 
-ENV ASPNETCORE_HTTP_PORTS=5170
+# Каталог для SQLite вне слоёв контейнера — сюда монтируется volume
+RUN mkdir -p /app/data
+
 ENV ASPNETCORE_ENVIRONMENT=Development
 ENV ASPNETCORE_URLS=http://0.0.0.0:5170
+ENV ConnectionStrings__Sqlite="Data Source=/app/data/hackback.db"
 EXPOSE 5170
 
 ENTRYPOINT ["dotnet", "HackBack.Api.dll"]

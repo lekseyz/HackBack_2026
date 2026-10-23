@@ -1,0 +1,12 @@
+.git
+.github
+data
+docs
+**/bin/
+**/obj/
+*.db
+*.db-shm
+*.db-wal
+dotnet-tools.json
+Dockerfile
+.dockerignore

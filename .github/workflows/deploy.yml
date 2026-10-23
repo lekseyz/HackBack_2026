@@ -1,19 +1,33 @@
 name: Deploy to Server
 
-# Триггер: запускать при пуше в ветку main (или master)
+# Триггер: запускать при пуше в ветку main
 on:
   push:
     branches:
       - main
 
 jobs:
-  deploy:
+  build:
+    name: Build check
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build
+        run: dotnet build HackBack_2026.slnx -warnaserror --nologo
+
+  deploy:
+    name: Deploy to Server
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -28,18 +42,27 @@ jobs:
             git fetch origin
             git reset --hard origin/main
 
-            echo "Собирается docker"
+            echo "Собираем новый образ (старый контейнер ещё работает)"
+            docker build -t hackback-api .
+
             docker stop hackback_api || true
             docker rm hackback_api || true
-            docker build --no-cache -t hackback-api .
             docker run -d \
               --name hackback_api \
               --restart always \
               -e ASPNETCORE_ENVIRONMENT=Development \
               -p 5170:5170 \
+              -v hackback_data:/app/data \
               hackback-api
 
-            echo "Чистим хлам"
-            docker image prune -f
+            echo "Ждём, пока приложение поднимется"
+            for i in $(seq 1 30); do
+              if curl -fsS http://localhost:5170/metrics > /dev/null; then
+                echo "Здеплоин"
+                exit 0
+              fi
+              sleep 2
+            done
 
-            echo "Здеплоин"
+            echo "Приложение не поднялось за 60 секунд"
+            exit 1
