@@ -25,6 +25,7 @@ COPY --from=build /app/publish .
 
 ENV ASPNETCORE_HTTP_PORTS=5170
 ENV ASPNETCORE_ENVIRONMENT=Development
+ENV ASPNETCORE_URLS=http://0.0.0.0:5170
 EXPOSE 5170
 
 ENTRYPOINT ["dotnet", "HackBack.Api.dll"]
