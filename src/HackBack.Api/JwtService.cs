@@ -15,27 +15,28 @@ public class JwtService
         _configuration = configuration;
     }
 
-    public string CreateToken(User user)
+    public (string Token, DateTime ExpiresAt) CreateToken(User user)
     {
         var jwt = _configuration.GetSection("Jwt");
         var credentials = new SigningCredentials(
             new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwt["Key"]!)),
             SecurityAlgorithms.HmacSha256);
 
+        var expiresAt = DateTime.UtcNow.AddMinutes(jwt.GetValue("ExpiresMinutes", 60));
+
         var claims = new[]
         {
             new Claim(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
-            new Claim(JwtRegisteredClaimNames.UniqueName, user.Login),
-            new Claim(JwtRegisteredClaimNames.Email, user.Email),
+            new Claim(JwtRegisteredClaimNames.UniqueName, user.Username),
         };
 
         var token = new JwtSecurityToken(
             issuer: jwt["Issuer"],
             audience: jwt["Audience"],
             claims: claims,
-            expires: DateTime.UtcNow.AddMinutes(jwt.GetValue("ExpiresMinutes", 60)),
+            expires: expiresAt,
             signingCredentials: credentials);
 
-        return new JwtSecurityTokenHandler().WriteToken(token);
+        return (new JwtSecurityTokenHandler().WriteToken(token), expiresAt);
     }
 }
