@@ -1,0 +1,7 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/HackBack.Api/HackBack.Api.csproj" />
+    <Project Path="src/HackBack.Domain/HackBack.Domain.csproj" />
+    <Project Path="src/HackBack.Infrastructure/HackBack.Infrastructure.csproj" />
+  </Folder>
+</Solution>
