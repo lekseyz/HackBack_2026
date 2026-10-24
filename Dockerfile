@@ -29,8 +29,11 @@ COPY --from=build /app/publish .
 RUN mkdir -p /app/data
 
 ENV ASPNETCORE_ENVIRONMENT=Development
-ENV ASPNETCORE_URLS=http://0.0.0.0:5170
+ENV ASPNETCORE_URLS=https://+:443
 ENV ConnectionStrings__Sqlite="Data Source=/app/data/hackback.db"
-EXPOSE 5170
+# PEM-сертификат Let's Encrypt монтируется из хоста (см. deploy.yml)
+ENV Kestrel__Certificates__Default__Path=/etc/letsencrypt/live/hack-analyzer.ddns.net/fullchain.pem
+ENV Kestrel__Certificates__Default__KeyPath=/etc/letsencrypt/live/hack-analyzer.ddns.net/privkey.pem
+EXPOSE 443
 
 ENTRYPOINT ["dotnet", "HackBack.Api.dll"]

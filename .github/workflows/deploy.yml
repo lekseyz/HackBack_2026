@@ -39,6 +39,20 @@ jobs:
           script: |
             cd /app
 
+            DOMAIN=hack-analyzer.ddns.net
+
+            # Первый выпуск Let's Encrypt, если сертификата ещё нет (нужен свободный порт 80)
+            if [ ! -f /etc/letsencrypt/live/$DOMAIN/fullchain.pem ]; then
+              command -v certbot >/dev/null 2>&1 || apt-get install -y -qq certbot
+              certbot certonly --standalone --non-interactive --agree-tos \
+                --register-unsafely-without-email -d $DOMAIN
+            fi
+
+            # После продления сертификата перезапускаем контейнер, чтобы Kestrel подхватил новый
+            mkdir -p /etc/letsencrypt/renewal-hooks/deploy
+            printf '#!/bin/sh\ndocker restart hackback_api >/dev/null 2>&1 || true\n' > /etc/letsencrypt/renewal-hooks/deploy/hackback-restart.sh
+            chmod +x /etc/letsencrypt/renewal-hooks/deploy/hackback-restart.sh
+
             git fetch origin
             git reset --hard origin/main
 
@@ -51,13 +65,14 @@ jobs:
               --name hackback_api \
               --restart always \
               -e ASPNETCORE_ENVIRONMENT=Development \
-              -p 5170:5170 \
+              -p 443:443 \
               -v hackback_data:/app/data \
+              -v /etc/letsencrypt:/etc/letsencrypt:ro \
               hackback-api
 
             echo "Ждём, пока приложение поднимется"
             for i in $(seq 1 30); do
-              if curl -fsS http://localhost:5170/metrics > /dev/null; then
+              if curl -fsS --resolve $DOMAIN:443:127.0.0.1 https://$DOMAIN/metrics > /dev/null; then
                 echo "Здеплоин"
                 exit 0
               fi
