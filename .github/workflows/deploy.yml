@@ -65,7 +65,7 @@ jobs:
               --name hackback_api \
               --restart always \
               -e ASPNETCORE_ENVIRONMENT=Development \
-              -p 443:443 \
+              -p 3000:3000 \
               -v hackback_data:/app/data \
               -v /etc/letsencrypt:/etc/letsencrypt:ro \
               hackback-api
@@ -79,5 +79,4 @@ jobs:
               sleep 2
             done
 
-            echo "Приложение не поднялось за 60 секунд"
             exit 1
