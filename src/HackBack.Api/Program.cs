@@ -49,7 +49,7 @@ builder.Services.AddOpenApi(options => options.AddDocumentTransformer((document,
 }));
 
 builder.Services.AddCors(options => options.AddDefaultPolicy(policy =>
-    policy.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader()));
+    policy.SetIsOriginAllowed(_ => true).AllowAnyMethod().AllowAnyHeader().AllowCredentials()));
 
 builder.Services.AddSqlite<AppDbContext>(builder.Configuration.GetConnectionString("Sqlite"));
 builder.Services.AddScoped<UserRepository>();
