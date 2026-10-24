@@ -2,7 +2,7 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
-# Конфиг NuGet из репо — детерминированные источники пакетов
+# Конфиг NuGet из репо - детерминированные источники пакетов
 COPY NuGet.Config .
 
 # Копируем файлы проектов для кэширования nuget-пакетов
@@ -25,7 +25,7 @@ WORKDIR /app
 
 COPY --from=build /app/publish .
 
-# Каталог для SQLite вне слоёв контейнера — сюда монтируется volume
+# Каталог для SQLite вне слоёв контейнера - сюда монтируется volume
 RUN mkdir -p /app/data
 
 ENV ASPNETCORE_ENVIRONMENT=Development

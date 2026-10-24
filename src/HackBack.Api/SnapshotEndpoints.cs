@@ -9,8 +9,8 @@ public static class SnapshotEndpoints
     {
         var group = app.MapGroup("/api/v1/source").WithTags("Source");
 
-        // PUT /api/v1/source/snapshot — полная замена датасета клиентов, услуг и транзакций с валидацией ссылок.
-        group.MapPut("/snapshot", async (SnapshotRequest request, AccountRepository accounts) =>
+        // PUT /api/v1/source/snapshot - полная замена датасета клиентов, услуг и транзакций с валидацией ссылок.
+        group.MapPut("/snapshot", async (SnapshotRequest request, AccountRepository accounts, MetricsRecalculationService recalc) =>
         {
             var accountList = request.Accounts ?? [];
             var serviceList = request.Services ?? [];
@@ -29,6 +29,8 @@ public static class SnapshotEndpoints
 
             await accounts.ReplaceAllAsync(accountList, serviceList, transactionList);
 
+            recalc.RequestFullRecalc("SNAPSHOT_IMPORTED");
+
             return Results.Ok(new
             {
                 success = true,
@@ -40,7 +42,7 @@ public static class SnapshotEndpoints
         })
         .RequireAuthorization()
         .WithSummary("Загрузка / обновление снимка данных")
-        .WithDescription("Полностью заменяет текущий датасет клиентов, услуг и транзакций. Битые ссылки ownerId/serviceId — 400.")
+        .WithDescription("Полностью заменяет текущий датасет клиентов, услуг и транзакций. Битые ссылки ownerId/serviceId - 400.")
         .Produces(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status400BadRequest)
         .Produces(StatusCodes.Status401Unauthorized);

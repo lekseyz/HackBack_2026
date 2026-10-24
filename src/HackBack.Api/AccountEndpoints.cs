@@ -4,13 +4,11 @@ namespace HackBack.Api;
 
 public static class AccountEndpoints
 {
-    private const string NoDataReason = "Недостаточно данных для оценки (скоринг будет подключён позже)";
-
     public static IEndpointRouteBuilder MapAccountEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/api/v1/customers").WithTags("Customers");
 
-        // GET /api/v1/customers — пагинированный список клиентов; сортировка riskScore — мок, фолбэк на id.
+        // GET /api/v1/customers - пагинированный список клиентов; сортировка riskScore - мок, фолбэк на id.
         group.MapGet("/", async (AccountRepository accounts, int page = 1, int pageSize = 20, string? sortBy = null, string? sortDirection = null, string? riskLevel = null, string? search = null) =>
         {
             page = Math.Max(1, page);
@@ -23,21 +21,7 @@ public static class AccountEndpoints
 
             return Results.Ok(new
             {
-                items = items.Select(a => new
-                {
-                    a.Id,
-                    a.Email,
-                    a.Balance,
-                    a.WithdrawBalance,
-                    a.BonusBalance,
-                    a.BonusState,
-                    a.TotalReplenished,
-                    riskScore = (double?)null,
-                    riskLevel = "no_data",
-                    status = "insufficient_data",
-                    revenueAtRisk = 0L,
-                    primaryReasons = new[] { NoDataReason },
-                }),
+                items = items.Select(CustomerItems.ToItem),
                 total,
                 page,
                 pageSize,
@@ -50,7 +34,7 @@ public static class AccountEndpoints
         .Produces(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status401Unauthorized);
 
-        // GET /api/v1/customers/{id} — детальная карточка клиента с балансовой сводкой и заглушкой риск-оценки.
+        // GET /api/v1/customers/{id} - детальная карточка клиента с балансовой сводкой и заглушкой риск-оценки.
         group.MapGet("/{id:long}", async (long id, AccountRepository accounts) =>
         {
             var account = await accounts.GetByIdAsync(id);
@@ -88,7 +72,7 @@ public static class AccountEndpoints
         })
         .RequireAuthorization()
         .WithSummary("Детальная карточка клиента")
-        .WithDescription("Балансы с effectiveBalance, замоканная оценка риска, услуги владельца и последние транзакции. 404 — клиент не найден.")
+        .WithDescription("Балансы с effectiveBalance, замоканная оценка риска, услуги владельца и последние транзакции. 404 - клиент не найден.")
         .Produces(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status404NotFound)
         .Produces(StatusCodes.Status401Unauthorized);

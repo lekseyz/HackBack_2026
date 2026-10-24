@@ -10,7 +10,7 @@ public static class ModelEndpoints
     {
         var group = app.MapGroup("/api/v1/model").WithTags("Model");
 
-        // GET /api/v1/model/settings — текущие веса и пороги модели; при первом запросе создаётся запись с дефолтами.
+        // GET /api/v1/model/settings - текущие веса и пороги модели; при первом запросе создаётся запись с дефолтами.
         group.MapGet("/settings", async (ModelSettingsRepository repository) =>
         {
             var settings = await repository.GetAsync();
@@ -22,8 +22,8 @@ public static class ModelEndpoints
         .Produces<SettingsResponse>(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status401Unauthorized);
 
-        // PATCH /api/v1/model/settings — частичное обновление только переданных весов/порогов с валидацией и сохранением в БД.
-        group.MapPatch("/settings", async (PatchSettingsRequest request, ModelSettingsRepository repository, ClaimsPrincipal principal) =>
+        // PATCH /api/v1/model/settings - частичное обновление только переданных весов/порогов с валидацией и сохранением в БД.
+        group.MapPatch("/settings", async (PatchSettingsRequest request, ModelSettingsRepository repository, ClaimsPrincipal principal, MetricsRecalculationService recalc) =>
         {
             var settings = await repository.GetAsync();
 
@@ -59,11 +59,13 @@ public static class ModelEndpoints
             settings.UpdatedBy = principal.FindFirstValue(ClaimTypes.Name) ?? principal.Identity?.Name ?? "unknown";
             await repository.SaveAsync(settings);
 
+            recalc.RequestFullRecalc("SETTINGS_UPDATED");
+
             return Results.Ok(new { success = true, message = "Настройки сохранены", settings = ToSettingsResponse(settings) });
         })
         .RequireAuthorization()
         .WithSummary("Изменение настроек модели")
-        .WithDescription("Обновляет только переданные веса и пороги. Отрицательные веса или highRiskThreshold <= mediumRiskThreshold — 400. Настройки сохраняются в БД и переживают перезапуск.")
+        .WithDescription("Обновляет только переданные веса и пороги. Отрицательные веса или highRiskThreshold <= mediumRiskThreshold - 400. Настройки сохраняются в БД и переживают перезапуск.")
         .Produces(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status400BadRequest)
         .Produces(StatusCodes.Status401Unauthorized);

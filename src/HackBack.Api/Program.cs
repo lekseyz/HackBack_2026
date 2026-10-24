@@ -4,10 +4,12 @@ using HackBack.Infrastructure;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.OpenApi;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Primitives;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi;
 using Scalar.AspNetCore;
 using System.Text;
+using System.Text.Json;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -73,9 +75,25 @@ builder.Services
             ValidateIssuerSigningKey = true,
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwt["Key"] ?? string.Empty)),
         };
+        options.Events = new JwtBearerEvents
+        {
+            OnMessageReceived = context =>
+            {
+                var accessToken = context.Request.Query["access_token"];
+                var path = context.HttpContext.Request.Path;
+                if (!StringValues.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/hubs/analytics"))
+                    context.Token = accessToken;
+                return Task.CompletedTask;
+            }
+        };
     });
 
 builder.Services.AddAuthorization();
+
+builder.Services.AddSignalR().AddJsonProtocol(o =>
+    o.PayloadSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase);
+builder.Services.AddSingleton<MetricsRecalculationService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<MetricsRecalculationService>());
 
 var app = builder.Build();
 
@@ -92,6 +110,9 @@ app.MapAccountEndpoints();
 app.MapModelEndpoints();
 app.MapAnalyticsEndpoints();
 app.MapMetricsEndpoints();
+
+// /hubs/analytics - SignalR-хаб живых обновлений аналитики (только server-to-client push).
+app.MapHub<AnalyticsHub>("/hubs/analytics").RequireAuthorization();
 
 using (var scope = app.Services.CreateScope())
 {

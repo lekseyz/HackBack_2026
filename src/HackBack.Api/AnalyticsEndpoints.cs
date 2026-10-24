@@ -8,7 +8,7 @@ public static class AnalyticsEndpoints
     {
         var group = app.MapGroup("/api/v1/analytics").WithTags("Analytics");
 
-        // GET /api/v1/analytics/summary — сводная аналитика (замокана до подключения скоринга): все клиенты в insufficientData.
+        // GET /api/v1/analytics/summary - сводная аналитика (замокана до подключения скоринга): все клиенты в insufficientData.
         group.MapGet("/summary", async (AccountRepository accounts) =>
         {
             var total = await accounts.CountAsync();

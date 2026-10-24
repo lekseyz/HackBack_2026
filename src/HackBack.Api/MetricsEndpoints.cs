@@ -7,7 +7,7 @@ public static class MetricsEndpoints
 {
     public static IEndpointRouteBuilder MapMetricsEndpoints(this IEndpointRouteBuilder app)
     {
-        // GET /metrics — выгрузка метрик Prometheus (без авторизации, по спеке).
+        // GET /metrics - выгрузка метрик Prometheus (без авторизации, по спеке).
         app.MapGet("/metrics", async (AccountRepository accounts) =>
         {
             var total = await accounts.CountAsync();

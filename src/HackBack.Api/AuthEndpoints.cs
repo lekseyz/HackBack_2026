@@ -21,7 +21,7 @@ public static class AuthEndpoints
     {
         var group = app.MapGroup("/api/v1/auth").WithTags("Auth");
 
-        // POST /api/v1/auth/login — вход по username и паролю, при успехе выдаёт JWT, срок действия, профиль и refresh-токен в HttpOnly-куке.
+        // POST /api/v1/auth/login - вход по username и паролю, при успехе выдаёт JWT, срок действия, профиль и refresh-токен в HttpOnly-куке.
         group.MapPost("/login", async (LoginRequest request, HttpContext http, UserRepository users, RefreshTokenRepository refreshTokens, JwtService jwt, IConfiguration configuration) =>
         {
             var user = await users.GetByUsernameAsync(request.Username);
@@ -36,11 +36,45 @@ public static class AuthEndpoints
             return Results.Ok(new AuthResponse(token, expiresAt, new UserDto(user.Id, user.Username)));
         })
         .WithSummary("Вход по логину и паролю")
-        .WithDescription("Принимает username и password. При успехе возвращает JWT, expiresAt и данные пользователя, ставит refresh-куку hackback_refresh. Неверные данные — 401.")
+        .WithDescription("Принимает username и password. При успехе возвращает JWT, expiresAt и данные пользователя, ставит refresh-куку hackback_refresh. Неверные данные - 401.")
         .Produces<AuthResponse>(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status401Unauthorized);
 
-        // GET /api/v1/auth/me — профиль текущего пользователя из JWT (заголовок "Authorization: Bearer <token>").
+        // POST /api/v1/auth/register - регистрация по username и паролю, при успехе сразу отдаем токены как при логине
+        group.MapPost("/register", async (LoginRequest request, HttpContext http, UserRepository users, RefreshTokenRepository refreshTokens, JwtService jwt, IConfiguration configuration) =>
+        {
+            if (string.IsNullOrEmpty(request.Username) || string.IsNullOrEmpty(request.Password))
+                return Results.BadRequest();
+
+            var user = await users.GetByUsernameAsync(request.Username);
+
+            if (user is not null)
+                return Results.Conflict();
+
+            (string hash, string salt) = PasswordHasher.Hash(request.Password);
+
+            user = new User()
+            {
+                Id = Guid.NewGuid(),
+                Username = request.Username,
+                PasswordHash = hash,
+                PasswordSalt = salt
+            };
+            await users.CreateAsync(user);
+
+            var (token, expiresAt) = jwt.CreateToken(user);
+            var refresh = await refreshTokens.CreateAsync(user.Id, DateTime.UtcNow.AddDays(configuration.GetValue("Refresh:ExpiresDays", 30)));
+            http.Response.Cookies.Append(CookieName, refresh, CookieOptions());
+
+            return Results.Ok(new AuthResponse(token, expiresAt, new UserDto(user.Id, user.Username)));
+        })
+        .WithSummary("Регистрация")
+        .WithDescription("Принимает username и password. При успехе возвращает JWT, expiresAt и данные пользователя, ставит refresh-куку hackback_refresh. Неверные данные - 400, при конфликте username - 409")
+        .Produces<AuthResponse>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status400BadRequest)
+        .Produces(StatusCodes.Status409Conflict);
+
+        // GET /api/v1/auth/me - профиль текущего пользователя из JWT (заголовок "Authorization: Bearer <token>").
         group.MapGet("/me", (ClaimsPrincipal principal) =>
         {
             var id = principal.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -52,11 +86,11 @@ public static class AuthEndpoints
         })
         .RequireAuthorization()
         .WithSummary("Получение текущего пользователя")
-        .WithDescription("Возвращает профиль пользователя из JWT. 401 — нет или просрочен токен.")
+        .WithDescription("Возвращает профиль пользователя из JWT. 401 - нет или просрочен токен.")
         .Produces<UserDto>(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status401Unauthorized);
 
-        // POST /api/v1/auth/logout — отзывает refresh-токен из куки, удаляет куку и завершает сессию.
+        // POST /api/v1/auth/logout - отзывает refresh-токен из куки, удаляет куку и завершает сессию.
         group.MapPost("/logout", async (HttpContext http, RefreshTokenRepository refreshTokens) =>
         {
             if (http.Request.Cookies.TryGetValue(CookieName, out var refresh))
@@ -69,7 +103,7 @@ public static class AuthEndpoints
         .WithDescription("Отзывает refresh-токен из куки hackback_refresh и удаляет её. Всегда 200.")
         .Produces(StatusCodes.Status200OK);
 
-        // POST /api/v1/refresh — обновление access-токена по refresh-куке: старый токен отзывается, выдаётся новый (ротация).
+        // POST /api/v1/refresh - обновление access-токена по refresh-куке: старый токен отзывается, выдаётся новый (ротация).
         group.MapPost("/refresh", async (HttpContext http, RefreshTokenRepository refreshTokens, UserRepository users, JwtService jwt, IConfiguration configuration) =>
         {
             if (!http.Request.Cookies.TryGetValue(AuthEndpoints.CookieName, out var refresh))
@@ -91,7 +125,7 @@ public static class AuthEndpoints
             return Results.Ok(new AuthResponse(token, expiresAt, new UserDto(user.Id, user.Username)));
         })
         .WithSummary("Обновление access-токена")
-        .WithDescription("Читает refresh-токен из HttpOnly куки hackback_refresh, отзывает его и выдаёт новый (ротация). В ответе новый JWT и новая кука. Нет куки, токен отозван или просрочен — 401.")
+        .WithDescription("Читает refresh-токен из HttpOnly куки hackback_refresh, отзывает его и выдаёт новый (ротация). В ответе новый JWT и новая кука. Нет куки, токен отозван или просрочен - 401.")
         .Produces<AuthResponse>(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status401Unauthorized);
 
