@@ -82,7 +82,7 @@ public static class RiskScorer
 
         var f2Description = worstExpiring is null
             ? string.Empty
-            : $"Без автопродления истекает {disabledExpiringCount} услуг, ближайняя — услуга {worstExpiring.Id}";
+            : $"Без автопродления истекает услуг: {disabledExpiringCount}, ближайшая — услуга: id={worstExpiring.Id}";
         AddFactor(factors, "AUTOPROLONG_DISABLED_EXPIRING", "Автопродление отключено, услуга истекает",
             f2Description, settings.AutoprolongDisabledExpiringWeight, worstExpiringSeverity, worstExpiring?.Id);
 

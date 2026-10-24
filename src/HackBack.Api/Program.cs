@@ -107,6 +107,7 @@ app.MapScalarApiReference("/api/v1/docs");
 app.MapAuthEndpoints();
 app.MapSnapshotEndpoints();
 app.MapAccountEndpoints();
+app.MapServiceEndpoints();
 app.MapModelEndpoints();
 app.MapAnalyticsEndpoints();
 app.MapMetricsEndpoints();

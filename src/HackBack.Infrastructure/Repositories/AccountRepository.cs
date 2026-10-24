@@ -138,6 +138,24 @@ public class AccountRepository(AppDbContext db)
             .Select(x => x.Transaction)
             .ToListAsync();
 
+    public Task<List<Account>> GetAccountsByIdsAsync(IReadOnlyCollection<long> ids) =>
+        db.Accounts.Where(a => ids.Contains(a.Id)).ToListAsync();
+
+    public Task<Service?> GetServiceByIdAsync(long id) =>
+        db.Services.FirstOrDefaultAsync(s => s.Id == id);
+
+    public Task<bool> AccountExistsAsync(long id) =>
+        db.Accounts.AnyAsync(a => a.Id == id);
+
+    public async Task AddServiceAsync(Service service)
+    {
+        db.Services.Add(service);
+        await db.SaveChangesAsync();
+    }
+
+    public Task SaveAsync() =>
+        db.SaveChangesAsync();
+
     public async Task<(List<Account> Accounts, List<Service> Services, List<Transaction> Transactions)> GetAllForScoringAsync()
     {
         var accounts = await db.Accounts.ToListAsync();

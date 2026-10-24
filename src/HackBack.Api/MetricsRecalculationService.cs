@@ -174,17 +174,55 @@ public sealed class MetricsRecalculationService(
         if (accountIds.Count == 0)
             return;
 
-        var items = new List<object>();
+        List<Account> partialAccounts;
+        List<object> items;
         using (var scope = scopeFactory.CreateScope())
         {
+            var modelSettings = scope.ServiceProvider.GetRequiredService<ModelSettingsRepository>();
             var accounts = scope.ServiceProvider.GetRequiredService<AccountRepository>();
-            foreach (var id in accountIds)
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+            var settings = await modelSettings.GetAsync();
+            partialAccounts = await accounts.GetAccountsByIdsAsync(accountIds);
+            var serviceList = await accounts.GetServicesByOwnersAsync(accountIds);
+            var transactionList = await accounts.GetTransactionsByOwnersAsync(accountIds);
+
+            var servicesByOwner = serviceList.ToLookup(s => s.OwnerId);
+            var ownerByServiceId = serviceList.ToDictionary(s => s.Id, s => s.OwnerId);
+            var transactionsByOwner = new Dictionary<long, List<Transaction>>();
+            foreach (var transaction in transactionList)
             {
-                var account = await accounts.GetByIdAsync(id);
-                if (account is null)
+                if (!ownerByServiceId.TryGetValue(transaction.ServiceId, out var ownerId))
                     continue;
-                items.Add(CustomerItems.ToItem(account));
+                if (!transactionsByOwner.TryGetValue(ownerId, out var ownerTransactions))
+                {
+                    ownerTransactions = [];
+                    transactionsByOwner[ownerId] = ownerTransactions;
+                }
+                ownerTransactions.Add(transaction);
             }
+
+            var now = DateTime.UtcNow;
+            foreach (var account in partialAccounts)
+            {
+                IReadOnlyList<Service> ownerServices = servicesByOwner[account.Id]
+                    .Where(s => s.Status != "deleted")
+                    .ToList();
+                IReadOnlyList<Transaction> ownerTransactions =
+                    transactionsByOwner.TryGetValue(account.Id, out var list) ? list : [];
+                var assessment = RiskScorer.Assess(new RiskInput(account, ownerServices, ownerTransactions, settings, now));
+                var reasons = assessment.Score is null ? null : JsonSerializer.Serialize(assessment.ReasonCodes);
+                account.RiskScore = assessment.Score;
+                account.MonthlyRevenue = assessment.MonthlyRevenue;
+                account.RevenueAtRisk = assessment.RevenueAtRisk;
+                account.BalanceDeficit = assessment.BalanceDeficit;
+                account.PrimaryReasons = reasons;
+                account.ScoredAt = now;
+            }
+
+            await db.SaveChangesAsync();
+
+            items = partialAccounts.Select(CustomerItems.ToItem).Cast<object>().ToList();
         }
 
         if (items.Count > 0)
