@@ -72,7 +72,7 @@ jobs:
 
             echo "Ждём, пока приложение поднимется"
             for i in $(seq 1 30); do
-              if curl -fsS --resolve $DOMAIN:443:127.0.0.1 https://$DOMAIN/metrics > /dev/null; then
+              if curl -fsS --resolve $DOMAIN:3000:127.0.0.1 https://$DOMAIN/metrics > /dev/null; then
                 echo "Здеплоин"
                 exit 0
               fi
