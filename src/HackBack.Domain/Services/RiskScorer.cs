@@ -143,7 +143,7 @@ public static class RiskScorer
         if (lastPerformed.Count > 0)
         {
             var daysSince = (input.Now - lastPerformed.Max()).TotalDays;
-            recencySeverity = Math.Max(0, 1 - daysSince / 30.0);
+            recencySeverity = Math.Min(1, Math.Max(0, 1 - daysSince / 30.0));
         }
 
         var autoprolongShare = activeCount == 0

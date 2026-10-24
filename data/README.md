@@ -9,6 +9,7 @@
 - `data.json` — объект с массивами `accounts`, `services`, `transactions`.
 - `002_seed.sql` — загрузка тех же записей в PostgreSQL.
 - `generate.py` — генератор JSON и SQL без сторонних Python-библиотек.
+- `generate_alive.py` — генератор «живого» демо-датасета (тот же формат data.json): архетипы клиентов (solid/average/struggling/critical/empty), дефициты баланса, скорые истечения, неуспешные продления — паттерны риска, на которых все 5 факторов скоринга и полоса high populated. Канонические данные не заменяет.
 - `test_generate.py` — проверки генератора.
 
 ## Создание таблиц и загрузка данных
