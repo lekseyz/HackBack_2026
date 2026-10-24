@@ -11,7 +11,8 @@ public static class AuthEndpoints
     internal static CookieOptions CookieOptions() => new()
     {
         HttpOnly = true,
-        SameSite = SameSiteMode.Strict,
+        SameSite = SameSiteMode.None,
+        Secure = true,
         IsEssential = true,
         Path = "/api/v1",
     };
@@ -69,7 +70,7 @@ public static class AuthEndpoints
         .Produces(StatusCodes.Status200OK);
 
         // POST /api/v1/refresh — обновление access-токена по refresh-куке: старый токен отзывается, выдаётся новый (ротация).
-        group.MapPost("/", async (HttpContext http, RefreshTokenRepository refreshTokens, UserRepository users, JwtService jwt, IConfiguration configuration) =>
+        group.MapPost("/refresh", async (HttpContext http, RefreshTokenRepository refreshTokens, UserRepository users, JwtService jwt, IConfiguration configuration) =>
         {
             if (!http.Request.Cookies.TryGetValue(AuthEndpoints.CookieName, out var refresh))
                 return Results.Unauthorized();
