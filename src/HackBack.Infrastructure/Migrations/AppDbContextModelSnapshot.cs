@@ -37,6 +37,9 @@ namespace HackBack.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<int?>("RiskScore")
+                        .HasColumnType("INTEGER");
+
                     b.Property<long>("TotalReplenished")
                         .HasColumnType("INTEGER");
 

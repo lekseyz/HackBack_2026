@@ -95,13 +95,19 @@ public sealed class MetricsRecalculationService(
 
         if (fullTriggers.Count > 0)
         {
+            using var scope = scopeFactory.CreateScope();
+            var modelSettings = scope.ServiceProvider.GetRequiredService<ModelSettingsRepository>();
+            var accounts = scope.ServiceProvider.GetRequiredService<AccountRepository>();
+            var settings = await modelSettings.GetAsync();
+            var (high, _, _, _) = await accounts.GetRiskBandCountsAsync(settings.HighRiskThreshold, settings.MediumRiskThreshold);
+
             foreach (var trigger in fullTriggers)
             {
                 await hub.Clients.All.SendAsync(
                     "ModelRecalculated",
-                    new ModelRecalculatedEvent(trigger, DateTime.UtcNow, new RecalcSummary(0, 0)),
+                    new ModelRecalculatedEvent(trigger, DateTime.UtcNow, new RecalcSummary(0, high)),
                     ct);
-                logger.LogInformation("Full metrics recalc pushed (trigger: {Trigger})", trigger);
+                logger.LogInformation("Full metrics recalc pushed (trigger: {Trigger}, highRisk: {HighRisk})", trigger, high);
             }
 
             return;

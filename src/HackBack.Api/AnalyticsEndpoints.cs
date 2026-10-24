@@ -8,19 +8,21 @@ public static class AnalyticsEndpoints
     {
         var group = app.MapGroup("/api/v1/analytics").WithTags("Analytics");
 
-        // GET /api/v1/analytics/summary - сводная аналитика (замокана до подключения скоринга): все клиенты в insufficientData.
-        group.MapGet("/summary", async (AccountRepository accounts) =>
+        // GET /api/v1/analytics/summary - сводная аналитика: распределение клиентов по полосам риска от порогов модели (финансовые показатели - нули до итерации скоринга).
+        group.MapGet("/summary", async (AccountRepository accounts, ModelSettingsRepository modelSettings) =>
         {
+            var settings = await modelSettings.GetAsync();
             var total = await accounts.CountAsync();
-            var insufficientPercentage = total == 0 ? 0d : 100.0;
+            var (high, medium, low, noScore) = await accounts.GetRiskBandCountsAsync(settings.HighRiskThreshold, settings.MediumRiskThreshold);
+            double Pct(int n) => total == 0 ? 0 : Math.Round(n * 100.0 / total, 1);
 
             return Results.Ok(new AnalyticsSummaryResponse(
                 total,
                 new RiskDistributionResponse(
-                    new RiskLevelStatResponse(0, 0),
-                    new RiskLevelStatResponse(0, 0),
-                    new RiskLevelStatResponse(0, 0),
-                    new RiskLevelStatResponse(total, insufficientPercentage)),
+                    new RiskLevelStatResponse(high, Pct(high)),
+                    new RiskLevelStatResponse(medium, Pct(medium)),
+                    new RiskLevelStatResponse(low, Pct(low)),
+                    new RiskLevelStatResponse(noScore, Pct(noScore))),
                 new FinancialsResponse("EUR_CENTS", 0, 0, 0, 0),
                 [],
                 [],
@@ -28,7 +30,7 @@ public static class AnalyticsEndpoints
         })
         .RequireAuthorization()
         .WithSummary("Сводная аналитика и оценка потерь")
-        .WithDescription("Агрегированные метрики по клиентам, распределению рисков и деньгам. Скоринг ещё не подключён: всё распределение уходит в insufficientData, финансовые показатели нулевые.")
+        .WithDescription("Агрегированные метрики по клиентам с распределением по полосам риска согласно порогам модели. Финансовые показатели нулевые до подключения скоринга.")
         .Produces<AnalyticsSummaryResponse>(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status401Unauthorized);
 

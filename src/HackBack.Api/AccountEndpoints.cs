@@ -1,3 +1,4 @@
+using HackBack.Domain;
 using HackBack.Infrastructure;
 
 namespace HackBack.Api;
@@ -8,30 +9,43 @@ public static class AccountEndpoints
     {
         var group = app.MapGroup("/api/v1/customers").WithTags("Customers");
 
-        // GET /api/v1/customers - пагинированный список клиентов; сортировка riskScore - мок, фолбэк на id.
-        group.MapGet("/", async (AccountRepository accounts, int page = 1, int pageSize = 20, string? sortBy = null, string? sortDirection = null, string? riskLevel = null, string? search = null) =>
+        // GET /api/v1/customers - курсорный (keyset) список клиентов: сортировка по колонке, поиск и фильтр по диапазону riskScore, null-скоры всегда в конце.
+        group.MapGet("/", async (AccountRepository accounts, string? cursorOn = null, string? cursorNext = null, int takeAmount = 20, string? sortDirection = null, int? riskScoreMin = null, int? riskScoreMax = null, string? search = null) =>
         {
-            page = Math.Max(1, page);
-            pageSize = Math.Clamp(pageSize, 1, 100);
+            var column = (cursorOn ?? "id").ToLowerInvariant();
+            if (column is not ("id" or "email" or "balance" or "totalreplenished" or "riskscore"))
+                return Results.BadRequest(new { message = $"Неизвестная колонка сортировки: {column}" });
 
-            var items = await accounts.GetPageAsync(page, pageSize, sortBy, sortDirection ?? "desc", riskLevel, search);
-            var total = !string.IsNullOrEmpty(riskLevel) && riskLevel != "no_data"
-                ? 0
-                : await accounts.CountAsync(search);
+            if (cursorNext != null && cursorOn == null)
+                return Results.BadRequest(new { message = "cursorNext требует cursorOn" });
+
+            var ascending = sortDirection?.ToLowerInvariant() == "asc";
+
+            CustomersCursor? cursor = null;
+            if (cursorNext != null && !CustomersCursor.TryParse(cursorNext, column, out cursor))
+                return Results.BadRequest(new { message = "Некорректный cursorNext" });
+
+            if (riskScoreMin.HasValue && riskScoreMax.HasValue && riskScoreMin.Value > riskScoreMax.Value)
+                return Results.BadRequest(new { message = "riskScoreMin больше riskScoreMax" });
+
+            takeAmount = Math.Clamp(takeAmount, 1, 100);
+
+            var rows = await accounts.GetPageAsync(column, ascending, cursor, takeAmount + 1, riskScoreMin, riskScoreMax, search);
+            var hasMore = rows.Count > takeAmount;
+            if (hasMore)
+                rows.RemoveAt(rows.Count - 1);
 
             return Results.Ok(new
             {
-                items = items.Select(CustomerItems.ToItem),
-                total,
-                page,
-                pageSize,
-                totalPages = (int)Math.Ceiling(total / (double)pageSize),
+                items = rows.Select(CustomerItems.ToItem),
+                nextCursor = hasMore && rows.Count > 0 ? CustomersCursor.Format(rows[^1], column) : null,
             });
         })
         .RequireAuthorization()
         .WithSummary("Список клиентов с оценками риска")
-        .WithDescription("Пагинация, сортировка (id/email/balance/totalReplenished/riskScore), поиск по подстроке id/email и фильтр по riskLevel.")
+        .WithDescription("Курсорная (keyset) пагинация: cursorOn/cursorNext/takeAmount/sortDirection, поиск по подстроке id/email и фильтр по диапазону riskScore.")
         .Produces(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status400BadRequest)
         .Produces(StatusCodes.Status401Unauthorized);
 
         // GET /api/v1/customers/{id} - детальная карточка клиента с балансовой сводкой и заглушкой риск-оценки.
@@ -59,8 +73,7 @@ public static class AccountEndpoints
                 },
                 riskAssessment = new
                 {
-                    riskScore = (double?)null,
-                    riskLevel = "no_data",
+                    riskScore = account.RiskScore,
                     loyaltyScore = (double?)null,
                     revenueAtRisk = 0L,
                     expectedLoss = 0L,

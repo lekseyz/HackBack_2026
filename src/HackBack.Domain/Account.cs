@@ -9,4 +9,5 @@ public class Account
     public long TotalReplenished { get; set; }
     public long BonusBalance { get; set; }
     public string BonusState { get; set; } = string.Empty;
+    public int? RiskScore { get; set; }
 }
