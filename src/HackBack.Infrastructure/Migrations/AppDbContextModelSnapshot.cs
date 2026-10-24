@@ -26,6 +26,9 @@ namespace HackBack.Infrastructure.Migrations
                     b.Property<long>("Balance")
                         .HasColumnType("INTEGER");
 
+                    b.Property<long>("BalanceDeficit")
+                        .HasColumnType("INTEGER");
+
                     b.Property<long>("BonusBalance")
                         .HasColumnType("INTEGER");
 
@@ -37,8 +40,20 @@ namespace HackBack.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<long>("MonthlyRevenue")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("PrimaryReasons")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("RevenueAtRisk")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int?>("RiskScore")
                         .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("ScoredAt")
+                        .HasColumnType("TEXT");
 
                     b.Property<long>("TotalReplenished")
                         .HasColumnType("INTEGER");

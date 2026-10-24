@@ -27,6 +27,9 @@ public static class SnapshotEndpoints
             if (brokenTransaction is not null)
                 return Results.BadRequest(new { message = $"Транзакция {brokenTransaction.Id} ссылается на несуществующую услугу serviceId={brokenTransaction.ServiceId}" });
 
+            foreach (var account in accountList)
+                account.RiskScore = null;
+
             await accounts.ReplaceAllAsync(accountList, serviceList, transactionList);
 
             recalc.RequestFullRecalc("SNAPSHOT_IMPORTED");

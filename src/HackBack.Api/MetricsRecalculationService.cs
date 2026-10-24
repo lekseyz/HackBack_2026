@@ -1,4 +1,7 @@
+using System.Diagnostics;
+using System.Text.Json;
 using System.Threading.Channels;
+using HackBack.Domain;
 using HackBack.Infrastructure;
 using Microsoft.AspNetCore.SignalR;
 
@@ -98,16 +101,71 @@ public sealed class MetricsRecalculationService(
             using var scope = scopeFactory.CreateScope();
             var modelSettings = scope.ServiceProvider.GetRequiredService<ModelSettingsRepository>();
             var accounts = scope.ServiceProvider.GetRequiredService<AccountRepository>();
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
             var settings = await modelSettings.GetAsync();
+            var (accountList, serviceList, transactionList) = await accounts.GetAllForScoringAsync();
+
+            var servicesByOwner = serviceList.ToLookup(s => s.OwnerId);
+            var ownerByServiceId = serviceList.ToDictionary(s => s.Id, s => s.OwnerId);
+            var transactionsByOwner = new Dictionary<long, List<Transaction>>();
+            foreach (var transaction in transactionList)
+            {
+                if (!ownerByServiceId.TryGetValue(transaction.ServiceId, out var ownerId))
+                    continue;
+                if (!transactionsByOwner.TryGetValue(ownerId, out var ownerTransactions))
+                {
+                    ownerTransactions = [];
+                    transactionsByOwner[ownerId] = ownerTransactions;
+                }
+                ownerTransactions.Add(transaction);
+            }
+
+            var stopwatch = Stopwatch.StartNew();
+            var changed = 0;
+            var now = DateTime.UtcNow;
+            foreach (var account in accountList)
+            {
+                IReadOnlyList<Service> ownerServices = servicesByOwner[account.Id].ToList();
+                IReadOnlyList<Transaction> ownerTransactions =
+                    transactionsByOwner.TryGetValue(account.Id, out var list) ? list : [];
+                var assessment = RiskScorer.Assess(new RiskInput(account, ownerServices, ownerTransactions, settings, now));
+                var reasons = assessment.Score is null ? null : JsonSerializer.Serialize(assessment.ReasonCodes);
+                if (account.RiskScore != assessment.Score
+                    || account.MonthlyRevenue != assessment.MonthlyRevenue
+                    || account.RevenueAtRisk != assessment.RevenueAtRisk
+                    || account.BalanceDeficit != assessment.BalanceDeficit
+                    || account.PrimaryReasons != reasons)
+                {
+                    account.RiskScore = assessment.Score;
+                    account.MonthlyRevenue = assessment.MonthlyRevenue;
+                    account.RevenueAtRisk = assessment.RevenueAtRisk;
+                    account.BalanceDeficit = assessment.BalanceDeficit;
+                    account.PrimaryReasons = reasons;
+                    account.ScoredAt = now;
+                    changed++;
+                }
+            }
+            stopwatch.Stop();
+
+            if (changed > 0)
+                await db.SaveChangesAsync();
+
             var (high, _, _, _) = await accounts.GetRiskBandCountsAsync(settings.HighRiskThreshold, settings.MediumRiskThreshold);
+
+            var revenueAtRisk = accountList.Sum(a => a.RevenueAtRisk);
+
+            logger.LogInformation(
+                "Перечситаны метрикидля: {Accounts}, скоры: {Changed} за: {Duration} ms",
+                accountList.Count, changed, stopwatch.ElapsedMilliseconds);
 
             foreach (var trigger in fullTriggers)
             {
                 await hub.Clients.All.SendAsync(
                     "ModelRecalculated",
-                    new ModelRecalculatedEvent(trigger, DateTime.UtcNow, new RecalcSummary(0, high)),
+                    new ModelRecalculatedEvent(trigger, DateTime.UtcNow, new RecalcSummary(revenueAtRisk, high)),
                     ct);
-                logger.LogInformation("Full metrics recalc pushed (trigger: {Trigger}, highRisk: {HighRisk})", trigger, high);
+                logger.LogInformation("Full metrics recalc pushed (trigger: {Trigger}, highRisk: {HighRisk}, revenueAtRisk: {RevenueAtRisk})", trigger, high, revenueAtRisk);
             }
 
             return;
@@ -123,8 +181,9 @@ public sealed class MetricsRecalculationService(
             foreach (var id in accountIds)
             {
                 var account = await accounts.GetByIdAsync(id);
-                if (account is not null)
-                    items.Add(CustomerItems.ToItem(account));
+                if (account is null)
+                    continue;
+                items.Add(CustomerItems.ToItem(account));
             }
         }
 

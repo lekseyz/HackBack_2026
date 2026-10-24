@@ -97,6 +97,12 @@ public class AccountRepository(AppDbContext db)
     public Task<int> CountAsync() =>
         db.Accounts.CountAsync();
 
+    public Task<List<Account>> GetAllAccountsAsync() =>
+        db.Accounts.ToListAsync();
+
+    public Task<int> CountDeletedServicesAsync() =>
+        db.Services.CountAsync(s => s.Status == "deleted");
+
     public async Task<(int High, int Medium, int Low, int NoScore)> GetRiskBandCountsAsync(double highThreshold, double mediumThreshold)
     {
         var high = await db.Accounts.CountAsync(a => a.RiskScore >= highThreshold);
@@ -112,6 +118,16 @@ public class AccountRepository(AppDbContext db)
     public Task<List<Service>> GetServicesByOwnerAsync(long ownerId) =>
         db.Services.Where(s => s.OwnerId == ownerId).ToListAsync();
 
+    public Task<List<Service>> GetServicesByOwnersAsync(IReadOnlyCollection<long> ownerIds) =>
+        db.Services.Where(s => ownerIds.Contains(s.OwnerId)).ToListAsync();
+
+    public Task<List<Transaction>> GetTransactionsByOwnersAsync(IReadOnlyCollection<long> ownerIds) =>
+        db.Transactions
+            .Join(db.Services, t => t.ServiceId, s => s.Id, (t, s) => new { Transaction = t, s.OwnerId })
+            .Where(x => ownerIds.Contains(x.OwnerId))
+            .Select(x => x.Transaction)
+            .ToListAsync();
+
     public Task<List<Transaction>> GetRecentTransactionsAsync(long ownerId, int take) =>
         db.Transactions
             .Join(db.Services, t => t.ServiceId, s => s.Id, (t, s) => new { Transaction = t, s.OwnerId })
@@ -121,6 +137,14 @@ public class AccountRepository(AppDbContext db)
             .Take(take)
             .Select(x => x.Transaction)
             .ToListAsync();
+
+    public async Task<(List<Account> Accounts, List<Service> Services, List<Transaction> Transactions)> GetAllForScoringAsync()
+    {
+        var accounts = await db.Accounts.ToListAsync();
+        var services = await db.Services.ToListAsync();
+        var transactions = await db.Transactions.ToListAsync();
+        return (accounts, services, transactions);
+    }
 
     public async Task ReplaceAllAsync(List<Account> accounts, List<Service> services, List<Transaction> transactions)
     {

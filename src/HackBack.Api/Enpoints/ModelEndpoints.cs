@@ -10,7 +10,7 @@ public static class ModelEndpoints
     {
         var group = app.MapGroup("/api/v1/model").WithTags("Model");
 
-        // GET /api/v1/model/settings - текущие веса и пороги модели; при первом запросе создаётся запись с дефолтами.
+        // GET /api/v1/model/settings - текущие веса и пороги модели
         group.MapGet("/settings", async (ModelSettingsRepository repository) =>
         {
             var settings = await repository.GetAsync();
@@ -23,7 +23,10 @@ public static class ModelEndpoints
         .Produces(StatusCodes.Status401Unauthorized);
 
         // PATCH /api/v1/model/settings - частичное обновление только переданных весов/порогов с валидацией и сохранением в БД.
-        group.MapPatch("/settings", async (PatchSettingsRequest request, ModelSettingsRepository repository, ClaimsPrincipal principal, MetricsRecalculationService recalc) =>
+        group.MapPatch("/settings", async (PatchSettingsRequest request, 
+                                           ModelSettingsRepository repository, 
+                                           ClaimsPrincipal principal, 
+                                           MetricsRecalculationService recalc) =>
         {
             var settings = await repository.GetAsync();
 
@@ -52,6 +55,12 @@ public static class ModelEndpoints
                 if (thresholds.ImminentExpiryDays is { } days) settings.ImminentExpiryDays = days;
             }
 
+            if (settings.HighRiskThreshold <= 0 || settings.MediumRiskThreshold <= 0)
+                return Results.BadRequest(new { success = false, message = "Пороги должны быть положительными" });
+
+            if (settings.ImminentExpiryDays < 1)
+                return Results.BadRequest(new { success = false, message = "imminentExpiryDays должен быть не меньше 1" });
+
             if (settings.HighRiskThreshold <= settings.MediumRiskThreshold)
                 return Results.BadRequest(new { success = false, message = "highRiskThreshold должен быть больше mediumRiskThreshold" });
 
@@ -65,7 +74,7 @@ public static class ModelEndpoints
         })
         .RequireAuthorization()
         .WithSummary("Изменение настроек модели")
-        .WithDescription("Обновляет только переданные веса и пороги. Отрицательные веса или highRiskThreshold <= mediumRiskThreshold - 400. Настройки сохраняются в БД и переживают перезапуск.")
+        .WithDescription("Обновляет только переданные веса и пороги. Отрицательные веса, неположительные пороги, imminentExpiryDays < 1 или highRiskThreshold <= mediumRiskThreshold - 400. Настройки сохраняются в БД и переживают перезапуск.")
         .Produces(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status400BadRequest)
         .Produces(StatusCodes.Status401Unauthorized);
@@ -90,7 +99,6 @@ public static class ModelEndpoints
 }
 
 
-// Пока так хз не придумал еще
 public record WeightsResponse(
     double ProlongWaitWithoutFundsWeight,
     double AutoprolongDisabledExpiringWeight,

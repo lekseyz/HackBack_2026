@@ -22,7 +22,12 @@ public static class AuthEndpoints
         var group = app.MapGroup("/api/v1/auth").WithTags("Auth");
 
         // POST /api/v1/auth/login - вход по username и паролю, при успехе выдаёт JWT, срок действия, профиль и refresh-токен в HttpOnly-куке.
-        group.MapPost("/login", async (LoginRequest request, HttpContext http, UserRepository users, RefreshTokenRepository refreshTokens, JwtService jwt, IConfiguration configuration) =>
+        group.MapPost("/login", async (LoginRequest request, 
+                                       HttpContext http, 
+                                       UserRepository users, 
+                                       RefreshTokenRepository refreshTokens, 
+                                       JwtService jwt, 
+                                       IConfiguration configuration) =>
         {
             var user = await users.GetByUsernameAsync(request.Username);
 
@@ -40,8 +45,13 @@ public static class AuthEndpoints
         .Produces<AuthResponse>(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status401Unauthorized);
 
-        // POST /api/v1/auth/register - регистрация по username и паролю, при успехе сразу отдаем токены как при логине
-        group.MapPost("/register", async (LoginRequest request, HttpContext http, UserRepository users, RefreshTokenRepository refreshTokens, JwtService jwt, IConfiguration configuration) =>
+        // POST /api/v1/auth/register - регистрация по username и паролю, при успехе сразу отдаем токены как при логине (на будующее, вдруг понадобиться регистрация)
+        group.MapPost("/register", async (LoginRequest request, 
+                                          HttpContext http, 
+                                          UserRepository users, 
+                                          RefreshTokenRepository refreshTokens, 
+                                          JwtService jwt, 
+                                          IConfiguration configuration) =>
         {
             if (string.IsNullOrEmpty(request.Username) || string.IsNullOrEmpty(request.Password))
                 return Results.BadRequest();
@@ -91,7 +101,8 @@ public static class AuthEndpoints
         .Produces(StatusCodes.Status401Unauthorized);
 
         // POST /api/v1/auth/logout - отзывает refresh-токен из куки, удаляет куку и завершает сессию.
-        group.MapPost("/logout", async (HttpContext http, RefreshTokenRepository refreshTokens) =>
+        group.MapPost("/logout", async (HttpContext http, 
+                                        RefreshTokenRepository refreshTokens) =>
         {
             if (http.Request.Cookies.TryGetValue(CookieName, out var refresh))
                 await refreshTokens.RevokeAsync(refresh);
@@ -104,7 +115,11 @@ public static class AuthEndpoints
         .Produces(StatusCodes.Status200OK);
 
         // POST /api/v1/refresh - обновление access-токена по refresh-куке: старый токен отзывается, выдаётся новый (ротация).
-        group.MapPost("/refresh", async (HttpContext http, RefreshTokenRepository refreshTokens, UserRepository users, JwtService jwt, IConfiguration configuration) =>
+        group.MapPost("/refresh", async (HttpContext http, 
+                                         RefreshTokenRepository refreshTokens, 
+                                         UserRepository users, 
+                                         JwtService jwt, 
+                                         IConfiguration configuration) =>
         {
             if (!http.Request.Cookies.TryGetValue(AuthEndpoints.CookieName, out var refresh))
                 return Results.Unauthorized();
