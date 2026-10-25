@@ -1,0 +1,932 @@
+openapi: 3.1.1
+info:
+  title: HackBack 2026 API
+  version: v1
+servers:
+  - url: https://hack-analyzer.ddns.net:3000/
+paths:
+  /metrics:
+    get:
+      tags:
+        - HackBack.Api
+      summary: Метрики Prometheus
+      description: Выгрузка агрегированных churn-метрик в формате text/plain;
+        version=0.0.4. Доступно без авторизации.
+      responses:
+        "200":
+          description: OK
+  /api/v1/auth/login:
+    post:
+      tags:
+        - Auth
+      summary: Вход по логину и паролю
+      description: Принимает username и password. При успехе возвращает JWT, expiresAt
+        и данные пользователя, ставит refresh-куку hackback_refresh. Неверные
+        данные - 401.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "401":
+          description: Unauthorized
+  /api/v1/auth/register:
+    post:
+      tags:
+        - Auth
+      summary: Регистрация
+      description: Принимает username и password. При успехе возвращает JWT, expiresAt
+        и данные пользователя, ставит refresh-куку hackback_refresh. Неверные
+        данные - 400, при конфликте username - 409
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          description: Bad Request
+        "409":
+          description: Conflict
+      security:
+        - bearerAuth: []
+  /api/v1/auth/me:
+    get:
+      tags:
+        - Auth
+      summary: Получение текущего пользователя
+      description: Возвращает профиль пользователя из JWT. 401 - нет или просрочен токен.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserDto"
+        "401":
+          description: Unauthorized
+      security:
+        - bearerAuth: []
+  /api/v1/auth/logout:
+    post:
+      tags:
+        - Auth
+      summary: Завершение текущей сессии
+      description: Отзывает refresh-токен из куки hackback_refresh и удаляет её. Всегда 200.
+      responses:
+        "200":
+          description: OK
+  /api/v1/auth/refresh:
+    post:
+      tags:
+        - Auth
+      summary: Обновление access-токена
+      description: Читает refresh-токен из HttpOnly куки hackback_refresh, отзывает
+        его и выдаёт новый (ротация). В ответе новый JWT и новая кука. Нет куки,
+        токен отозван или просрочен - 401.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "401":
+          description: Unauthorized
+      security:
+        - bearerAuth: []
+  /api/v1/source/snapshot:
+    put:
+      tags:
+        - Source
+      summary: Загрузка / обновление снимка данных
+      description: Полностью заменяет текущий датасет клиентов, услуг и транзакций.
+        Битые ссылки ownerId/serviceId - 400.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SnapshotRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+        "400":
+          description: Bad Request
+        "401":
+          description: Unauthorized
+      security:
+        - bearerAuth: []
+  /api/v1/customers:
+    get:
+      tags:
+        - Customers
+      summary: Список клиентов с оценками риска
+      description: "Курсорная (keyset) пагинация:
+        cursorOn/cursorNext/takeAmount/sortDirection, поиск по подстроке
+        id/email и фильтр по диапазону riskScore."
+      parameters:
+        - name: cursorOn
+          in: query
+          schema:
+            type: string
+        - name: cursorNext
+          in: query
+          schema:
+            type: string
+        - name: takeAmount
+          in: query
+          schema:
+            pattern: ^-?(?:0|[1-9]\d*)$
+            type:
+              - integer
+              - string
+            format: int32
+            default: 20
+        - name: sortDirection
+          in: query
+          schema:
+            type: string
+        - name: riskScoreMin
+          in: query
+          schema:
+            pattern: ^-?(?:0|[1-9]\d*)$
+            type:
+              - integer
+              - string
+            format: int32
+        - name: riskScoreMax
+          in: query
+          schema:
+            pattern: ^-?(?:0|[1-9]\d*)$
+            type:
+              - integer
+              - string
+            format: int32
+        - name: search
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+        "400":
+          description: Bad Request
+        "401":
+          description: Unauthorized
+      security:
+        - bearerAuth: []
+  /api/v1/customers/{id}:
+    get:
+      tags:
+        - Customers
+      summary: Детальная карточка клиента
+      description: Балансы с effectiveBalance (с учётом bonusState), скоринг риска с
+        факторами и лояльностью, MRR-деньги под риском, услуги владельца и
+        последние транзакции. 404 - клиент не найден.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            pattern: ^-?(?:0|[1-9]\d*)$
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: OK
+        "401":
+          description: Unauthorized
+        "404":
+          description: Not Found
+      security:
+        - bearerAuth: []
+  /api/v1/services:
+    post:
+      tags:
+        - Services
+      summary: Создание услуги
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateServiceRequest"
+        required: true
+      responses:
+        "201":
+          description: Created
+        "400":
+          description: Bad Request
+        "404":
+          description: Not Found
+      security:
+        - bearerAuth: []
+  /api/v1/services/{id}:
+    patch:
+      tags:
+        - Services
+      summary: Частичное обновление услуги
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            pattern: ^-?(?:0|[1-9]\d*)$
+            type: integer
+            format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PatchServiceRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+        "400":
+          description: Bad Request
+        "404":
+          description: Not Found
+      security:
+        - bearerAuth: []
+    delete:
+      tags:
+        - Services
+      summary: Софт-удаление услуги
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            pattern: ^-?(?:0|[1-9]\d*)$
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: OK
+        "404":
+          description: Not Found
+      security:
+        - bearerAuth: []
+  /api/v1/model/settings:
+    get:
+      tags:
+        - Model
+      summary: Получение настроек модели скоринга
+      description: Возвращает весовые коэффициенты признаков и пороги уровней риска.
+        При первом запросе создаётся запись с дефолтами.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SettingsResponse"
+        "401":
+          description: Unauthorized
+      security:
+        - bearerAuth: []
+    patch:
+      tags:
+        - Model
+      summary: Изменение настроек модели
+      description: Обновляет только переданные веса и пороги. Отрицательные веса,
+        неположительные пороги, imminentExpiryDays < 1 или highRiskThreshold <=
+        mediumRiskThreshold - 400. Настройки сохраняются в БД и переживают
+        перезапуск.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PatchSettingsRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+        "400":
+          description: Bad Request
+        "401":
+          description: Unauthorized
+      security:
+        - bearerAuth: []
+  /api/v1/analytics/summary:
+    get:
+      tags:
+        - Analytics
+      summary: Сводная аналитика и оценка потерь
+      description: "Агрегированные метрики по клиентам из persist-колонок:
+        распределение по полосам риска, финансовые агрегаты (MRR, деньги под
+        риском, ожидаемые потери, дефицит баланса - евроценты), разбор причин
+        оттока и динамика оттока по ISO-неделе."
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalyticsSummaryResponse"
+        "401":
+          description: Unauthorized
+      security:
+        - bearerAuth: []
+components:
+  schemas:
+    Account:
+      type: object
+      properties:
+        id:
+          pattern: ^-?(?:0|[1-9]\d*)$
+          type:
+            - integer
+            - string
+          format: int64
+        email:
+          type: string
+        balance:
+          pattern: ^-?(?:0|[1-9]\d*)$
+          type:
+            - integer
+            - string
+          format: int64
+        withdrawBalance:
+          pattern: ^-?(?:0|[1-9]\d*)$
+          type:
+            - integer
+            - string
+          format: int64
+        totalReplenished:
+          pattern: ^-?(?:0|[1-9]\d*)$
+          type:
+            - integer
+            - string
+          format: int64
+        bonusBalance:
+          pattern: ^-?(?:0|[1-9]\d*)$
+          type:
+            - integer
+            - string
+          format: int64
+        bonusState:
+          type: string
+        riskScore:
+          pattern: ^-?(?:0|[1-9]\d*)$
+          type:
+            - "null"
+            - integer
+            - string
+          format: int32
+        monthlyRevenue:
+          pattern: ^-?(?:0|[1-9]\d*)$
+          type:
+            - integer
+            - string
+          format: int64
+        revenueAtRisk:
+          pattern: ^-?(?:0|[1-9]\d*)$
+          type:
+            - integer
+            - string
+          format: int64
+        balanceDeficit:
+          pattern: ^-?(?:0|[1-9]\d*)$
+          type:
+            - integer
+            - string
+          format: int64
+        primaryReasons:
+          type:
+            - "null"
+            - string
+        scoredAt:
+          type:
+            - "null"
+            - string
+          format: date-time
+    AnalyticsSummaryResponse:
+      required:
+        - totalCustomers
+        - riskDistribution
+        - financials
+        - reasonsBreakdown
+        - churnDynamics
+        - lastCalculatedAt
+      type: object
+      properties:
+        totalCustomers:
+          pattern: ^-?(?:0|[1-9]\d*)$
+          type:
+            - integer
+            - string
+          format: int32
+        riskDistribution:
+          $ref: "#/components/schemas/RiskDistributionResponse"
+        financials:
+          $ref: "#/components/schemas/FinancialsResponse"
+        reasonsBreakdown:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReasonBreakdownItem"
+        churnDynamics:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChurnDynamicsItem"
+        lastCalculatedAt:
+          type: string
+          format: date-time
+    AuthResponse:
+      required:
+        - token
+        - expiresAt
+        - user
+      type: object
+      properties:
+        token:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+        user:
+          $ref: "#/components/schemas/UserDto"
+    ChurnDynamicsItem:
+      required:
+        - period
+        - factDeleted
+        - forecastRisk
+      type: object
+      properties:
+        period:
+          type: string
+        factDeleted:
+          pattern: ^-?(?:0|[1-9]\d*)$
+          type:
+            - integer
+            - string
+          format: int32
+        forecastRisk:
+          pattern: ^-?(?:0|[1-9]\d*)$
+          type:
+            - integer
+            - string
+          format: int32
+    CreateServiceRequest:
+      required:
+        - ownerId
+        - name
+        - paymentTerm
+        - autoProlong
+        - expiresAt
+        - status
+        - price
+      type: object
+      properties:
+        ownerId:
+          pattern: ^-?(?:0|[1-9]\d*)$
+          type:
+            - integer
+            - string
+          format: int64
+        name:
+          type: string
+        paymentTerm:
+          type: string
+        autoProlong:
+          type: boolean
+        expiresAt:
+          type: string
+          format: date-time
+        status:
+          type: string
+        price:
+          pattern: ^-?(?:0|[1-9]\d*)$
+          type:
+            - integer
+            - string
+          format: int64
+    FinancialsResponse:
+      required:
+        - currency
+        - totalMonthlyRecurringRevenue
+        - revenueAtRisk
+        - expectedLoss
+        - immediateBalanceDeficit
+      type: object
+      properties:
+        currency:
+          type: string
+        totalMonthlyRecurringRevenue:
+          pattern: ^-?(?:0|[1-9]\d*)$
+          type:
+            - integer
+            - string
+          format: int64
+        revenueAtRisk:
+          pattern: ^-?(?:0|[1-9]\d*)$
+          type:
+            - integer
+            - string
+          format: int64
+        expectedLoss:
+          pattern: ^-?(?:0|[1-9]\d*)$
+          type:
+            - integer
+            - string
+          format: int64
+        immediateBalanceDeficit:
+          pattern: ^-?(?:0|[1-9]\d*)$
+          type:
+            - integer
+            - string
+          format: int64
+    LoginRequest:
+      required:
+        - username
+        - password
+      type: object
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+    PatchServiceRequest:
+      required:
+        - name
+        - paymentTerm
+        - autoProlong
+        - expiresAt
+        - status
+        - price
+      type: object
+      properties:
+        name:
+          type:
+            - "null"
+            - string
+        paymentTerm:
+          type:
+            - "null"
+            - string
+        autoProlong:
+          type:
+            - "null"
+            - boolean
+        expiresAt:
+          type:
+            - "null"
+            - string
+          format: date-time
+        status:
+          type:
+            - "null"
+            - string
+        price:
+          pattern: ^-?(?:0|[1-9]\d*)$
+          type:
+            - "null"
+            - integer
+            - string
+          format: int64
+    PatchSettingsRequest:
+      required:
+        - weights
+        - thresholds
+      type: object
+      properties:
+        weights:
+          oneOf:
+            - type: "null"
+            - $ref: "#/components/schemas/PatchWeightsRequest"
+        thresholds:
+          oneOf:
+            - type: "null"
+            - $ref: "#/components/schemas/PatchThresholdsRequest"
+    PatchThresholdsRequest:
+      required:
+        - highRiskThreshold
+        - mediumRiskThreshold
+        - imminentExpiryDays
+      type: object
+      properties:
+        highRiskThreshold:
+          pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$
+          type:
+            - "null"
+            - number
+            - string
+          format: double
+        mediumRiskThreshold:
+          pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$
+          type:
+            - "null"
+            - number
+            - string
+          format: double
+        imminentExpiryDays:
+          pattern: ^-?(?:0|[1-9]\d*)$
+          type:
+            - "null"
+            - integer
+            - string
+          format: int32
+    PatchWeightsRequest:
+      required:
+        - prolongWaitWithoutFundsWeight
+        - autoprolongDisabledExpiringWeight
+        - autoprolongEnabledDeficitWeight
+        - suspendedServiceWeight
+        - recentFailedProlongationWeight
+      type: object
+      properties:
+        prolongWaitWithoutFundsWeight:
+          pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$
+          type:
+            - "null"
+            - number
+            - string
+          format: double
+        autoprolongDisabledExpiringWeight:
+          pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$
+          type:
+            - "null"
+            - number
+            - string
+          format: double
+        autoprolongEnabledDeficitWeight:
+          pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$
+          type:
+            - "null"
+            - number
+            - string
+          format: double
+        suspendedServiceWeight:
+          pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$
+          type:
+            - "null"
+            - number
+            - string
+          format: double
+        recentFailedProlongationWeight:
+          pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$
+          type:
+            - "null"
+            - number
+            - string
+          format: double
+    ReasonBreakdownItem:
+      required:
+        - reason
+        - label
+        - affectedCustomersCount
+      type: object
+      properties:
+        reason:
+          type: string
+        label:
+          type: string
+        affectedCustomersCount:
+          pattern: ^-?(?:0|[1-9]\d*)$
+          type:
+            - integer
+            - string
+          format: int32
+    RiskDistributionResponse:
+      required:
+        - high
+        - medium
+        - low
+        - insufficientData
+      type: object
+      properties:
+        high:
+          $ref: "#/components/schemas/RiskLevelStatResponse"
+        medium:
+          $ref: "#/components/schemas/RiskLevelStatResponse"
+        low:
+          $ref: "#/components/schemas/RiskLevelStatResponse"
+        insufficientData:
+          $ref: "#/components/schemas/RiskLevelStatResponse"
+    RiskLevelStatResponse:
+      required:
+        - count
+        - percentage
+      type: object
+      properties:
+        count:
+          pattern: ^-?(?:0|[1-9]\d*)$
+          type:
+            - integer
+            - string
+          format: int32
+        percentage:
+          pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$
+          type:
+            - number
+            - string
+          format: double
+    Service:
+      type: object
+      properties:
+        id:
+          pattern: ^-?(?:0|[1-9]\d*)$
+          type:
+            - integer
+            - string
+          format: int64
+        name:
+          type: string
+        ownerId:
+          pattern: ^-?(?:0|[1-9]\d*)$
+          type:
+            - integer
+            - string
+          format: int64
+        paymentTerm:
+          type: string
+        autoProlong:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+        status:
+          type: string
+        price:
+          pattern: ^-?(?:0|[1-9]\d*)$
+          type:
+            - integer
+            - string
+          format: int64
+    SettingsResponse:
+      required:
+        - weights
+        - thresholds
+        - updatedAt
+        - updatedBy
+      type: object
+      properties:
+        weights:
+          $ref: "#/components/schemas/WeightsResponse"
+        thresholds:
+          $ref: "#/components/schemas/ThresholdsResponse"
+        updatedAt:
+          type: string
+          format: date-time
+        updatedBy:
+          type: string
+    SnapshotRequest:
+      required:
+        - accounts
+        - services
+        - transactions
+      type: object
+      properties:
+        accounts:
+          type: array
+          items:
+            $ref: "#/components/schemas/Account"
+        services:
+          type: array
+          items:
+            $ref: "#/components/schemas/Service"
+        transactions:
+          type: array
+          items:
+            $ref: "#/components/schemas/Transaction"
+    ThresholdsResponse:
+      required:
+        - highRiskThreshold
+        - mediumRiskThreshold
+        - imminentExpiryDays
+      type: object
+      properties:
+        highRiskThreshold:
+          pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$
+          type:
+            - number
+            - string
+          format: double
+        mediumRiskThreshold:
+          pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$
+          type:
+            - number
+            - string
+          format: double
+        imminentExpiryDays:
+          pattern: ^-?(?:0|[1-9]\d*)$
+          type:
+            - integer
+            - string
+          format: int32
+    Transaction:
+      type: object
+      properties:
+        id:
+          pattern: ^-?(?:0|[1-9]\d*)$
+          type:
+            - integer
+            - string
+          format: int64
+        amount:
+          pattern: ^-?(?:0|[1-9]\d*)$
+          type:
+            - integer
+            - string
+          format: int32
+        status:
+          type: string
+        performedAt:
+          type:
+            - "null"
+            - string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        type:
+          type: string
+        serviceId:
+          pattern: ^-?(?:0|[1-9]\d*)$
+          type:
+            - integer
+            - string
+          format: int64
+    UserDto:
+      required:
+        - id
+        - username
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        username:
+          type: string
+    WeightsResponse:
+      required:
+        - prolongWaitWithoutFundsWeight
+        - autoprolongDisabledExpiringWeight
+        - autoprolongEnabledDeficitWeight
+        - suspendedServiceWeight
+        - recentFailedProlongationWeight
+      type: object
+      properties:
+        prolongWaitWithoutFundsWeight:
+          pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$
+          type:
+            - number
+            - string
+          format: double
+        autoprolongDisabledExpiringWeight:
+          pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$
+          type:
+            - number
+            - string
+          format: double
+        autoprolongEnabledDeficitWeight:
+          pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$
+          type:
+            - number
+            - string
+          format: double
+        suspendedServiceWeight:
+          pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$
+          type:
+            - number
+            - string
+          format: double
+        recentFailedProlongationWeight:
+          pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$
+          type:
+            - number
+            - string
+          format: double
+  securitySchemes:
+    bearerAuth:
+      type: http
+      description: JWT из POST /api/v1/auth/login
+      scheme: bearer
+      bearerFormat: JWT
+tags:
+  - name: HackBack.Api
+  - name: Auth
+  - name: Source
+  - name: Customers
+  - name: Services
+  - name: Model
+  - name: Analytics
